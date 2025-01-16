@@ -1,2 +1,2 @@
 # bufread
-A buffered reader implementation in Rust with special behaviour.
+A buffered reader implementation in Rust with special behavior.
