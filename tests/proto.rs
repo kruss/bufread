@@ -66,8 +66,14 @@ impl Source {
         packet
     }
 
+    /// Returns the contained data slice.
     pub fn data(&self) -> &[u8] {
         self.data.as_slice()
+    }
+
+    /// Returns the length of the contained data.
+    pub fn len(&self) -> usize {
+        self.data.len()
     }
 }
 

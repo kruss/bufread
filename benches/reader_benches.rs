@@ -23,8 +23,7 @@ use bench_config::bench_config;
 mod proto;
 
 use bufread::BufReader;
-use proto::Parser;
-use proto::Source;
+use proto::{Parser, Source};
 
 fn proto_benchmark(c: &mut Criterion) {
     let num_packets = 50 * 1000;

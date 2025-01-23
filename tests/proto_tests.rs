@@ -15,8 +15,7 @@ mod proto;
 
 #[cfg(test)]
 mod tests {
-    use super::proto::Parser;
-    use super::proto::Source;
+    use super::proto::{Parser, Source};
     use bufread::BufReader;
     use rand::prelude::*;
 
@@ -33,7 +32,7 @@ mod tests {
         match Parser::run(&mut parser) {
             Ok(result) => {
                 assert_eq!(num_packets, result.0);
-                assert_eq!(source.data().len(), result.1);
+                assert_eq!(source.len(), result.1);
             }
             Err(error) => {
                 panic!("{}", error);
@@ -54,7 +53,7 @@ mod tests {
         match Parser::run(&mut parser) {
             Ok(result) => {
                 assert_eq!(num_packets, result.0);
-                assert_eq!(source.data().len(), result.1);
+                assert_eq!(source.len(), result.1);
             }
             Err(error) => {
                 panic!("{}", error);
