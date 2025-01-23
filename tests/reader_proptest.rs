@@ -17,7 +17,7 @@ mod proto;
 
 #[cfg(test)]
 mod tests {
-    use super::proto::{Parser, Source};
+    use super::proto::{Parser, Source, MAX_PACKET_LEN};
     use bufread::BufReader;
     use proptest::prelude::*;
     use proptest::test_runner::FileFailurePersistence;
@@ -25,23 +25,23 @@ mod tests {
     proptest! {
         #![proptest_config(ProptestConfig::with_failure_persistence(FileFailurePersistence::Off))]
         #[test]
-        #[ignore = "this is long running task"]
         fn reader_proptest(
-            num_packets in 1usize..100,
-            max_size in u16::MAX as usize..(3 * u16::MAX as usize)
+            source_min_size in (MAX_PACKET_LEN / 2)..(3 * MAX_PACKET_LEN),
+            buffer_max_size in MAX_PACKET_LEN..(2 * MAX_PACKET_LEN)
         ) {
-            let source = Source::random(num_packets);
-            let min_size = u16::MAX as usize;
-            let reader = BufReader::new(max_size, min_size, source.data());
+            let buffer_min_size = MAX_PACKET_LEN;
+
+            let source = Source::fixed(source_min_size);
+            let reader = BufReader::new(buffer_max_size, buffer_min_size, source.data());
             let mut parser = Parser::new(reader);
 
             match Parser::run(&mut parser) {
                 Ok(result) => {
-                    if num_packets != result.0 {
-                        panic!("num packets does not match: {} != {}", num_packets, result.0);
+                    if source.num_packets() != result.0 {
+                        panic!("num packets does not match: {} != {}", source.num_packets(), result.0);
                     }
-                    if source.len() != result.1 {
-                        panic!("source len does not match: {} != {}", source.len(), result.1);
+                    if source.data_len() != result.1 {
+                        panic!("source len does not match: {} != {}", source.data_len(), result.1);
                     }
                 }
                 Err(error) => {

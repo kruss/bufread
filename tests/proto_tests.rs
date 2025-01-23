@@ -15,24 +15,23 @@ mod proto;
 
 #[cfg(test)]
 mod tests {
-    use super::proto::{Parser, Source};
+    use super::proto::{Parser, Source, MAX_PACKET_LEN};
     use bufread::BufReader;
-    use rand::prelude::*;
+
+    const SOURCE_MIN_SIZE: usize = 10 * MAX_PACKET_LEN;
+    const BUFFER_MAX_SIZE: usize = 3 * MAX_PACKET_LEN;
+    const BUFFER_MIN_SIZE: usize = MAX_PACKET_LEN;
 
     #[test]
-    fn test_fixed() {
-        let num_packets = 1000;
-        let source = Source::fixed(num_packets);
-
-        let min_size = u16::MAX as usize;
-        let max_size = 3 * min_size;
-        let reader = BufReader::new(max_size, min_size, source.data());
+    fn test_fixed_source() {
+        let source = Source::fixed(SOURCE_MIN_SIZE);
+        let reader = BufReader::new(BUFFER_MAX_SIZE, BUFFER_MIN_SIZE, source.data());
         let mut parser = Parser::new(reader);
 
         match Parser::run(&mut parser) {
             Ok(result) => {
-                assert_eq!(num_packets, result.0);
-                assert_eq!(source.len(), result.1);
+                assert_eq!(source.num_packets(), result.0);
+                assert_eq!(source.data_len(), result.1);
             }
             Err(error) => {
                 panic!("{}", error);
@@ -41,19 +40,15 @@ mod tests {
     }
 
     #[test]
-    fn test_random() {
-        let num_packets = 1000;
-        let source = Source::random(num_packets);
-
-        let min_size = u16::MAX as usize;
-        let max_size = rand::thread_rng().gen_range(min_size..(3 * min_size));
-        let reader = BufReader::new(max_size, min_size, source.data());
+    fn test_random_source() {
+        let source = Source::random(SOURCE_MIN_SIZE);
+        let reader = BufReader::new(BUFFER_MAX_SIZE, BUFFER_MIN_SIZE, source.data());
         let mut parser = Parser::new(reader);
 
         match Parser::run(&mut parser) {
             Ok(result) => {
-                assert_eq!(num_packets, result.0);
-                assert_eq!(source.len(), result.1);
+                assert_eq!(source.num_packets(), result.0);
+                assert_eq!(source.data_len(), result.1);
             }
             Err(error) => {
                 panic!("{}", error);

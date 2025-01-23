@@ -10,6 +10,13 @@
 // is strictly forbidden unless prior written permission is obtained
 // from E.S.R.Labs.
 
+/*
+    Contains a pseudo protocol for testing, with packages consisting of
+    an u16 header with the length of the payload after the header
+    providing a total packet length within the range of
+    size_of::<u16>() to size_of::<u16>() + u16::MAX bytes.
+*/
+
 use bufread::BufReader;
 use rand::prelude::*;
 use std::{
@@ -17,52 +24,65 @@ use std::{
     mem::size_of,
 };
 
-/// A source for pseudo packages consisting of:
-/// - A u16 header containing the total packet_len
-/// - A u8 byte payload of packet_len - size_of(u16) bytes
-/// And packages having a length-range from size_of(u16) to u16::MAX.
+/// The fixed header length of the protocol.
+pub const HEADER_LEN: usize = size_of::<u16>() as usize;
+/// The maximum payload length of the protocol.
+const MAX_PAYLOAD_LEN: usize = u16::MAX as usize;
+/// The maximum packet length of the protocol.
+pub const MAX_PACKET_LEN: usize = HEADER_LEN + MAX_PAYLOAD_LEN;
+
+/// A source for pseudo protocol packages.
 pub struct Source {
     data: Vec<u8>,
+    num_packets: usize,
 }
 
 impl Source {
-    /// Creates a new source with fixed packet lengths.
-    pub fn fixed(num_packets: usize) -> Self {
+    /// Creates a new source with a deterministic package layout and adds packages
+    /// until reaching at least the given minimal data size.
+    pub fn fixed(min_size: usize) -> Self {
         let mut data = Vec::new();
+        let mut num_packets = 0;
 
-        for i in 0..num_packets {
-            let packet_len: u16 = (size_of::<u16>() + i) as u16;
-            data.append(&mut Self::create_packet(packet_len));
+        while data.len() < min_size {
+            let payload_len = num_packets % 1024;
+            data.append(&mut Self::create_packet(payload_len));
+            num_packets += 1;
         }
 
-        Source { data }
+        Source { data, num_packets }
     }
 
-    /// Creates a new source with random packet lengths.
-    pub fn random(num_packets: usize) -> Self {
+    /// Creates a new source with a random package layout and adds packages
+    /// until reaching at least the given minimal data size.
+    pub fn random(min_size: usize) -> Self {
         let mut data = Vec::new();
+        let mut num_packets = 0;
 
-        for _ in 0..num_packets {
-            let packet_len: u16 = rand::thread_rng().gen_range(size_of::<u16>() as u16..u16::MAX);
-            data.append(&mut Self::create_packet(packet_len));
+        while data.len() < min_size {
+            let payload_len: usize = rand::thread_rng().gen_range(0..MAX_PAYLOAD_LEN);
+            data.append(&mut Self::create_packet(payload_len));
+            num_packets += 1;
         }
 
-        Source { data }
+        Source { data, num_packets }
     }
 
-    fn create_packet(packet_len: u16) -> Vec<u8> {
-        assert!(packet_len >= size_of::<u16>() as u16);
+    /// Creates a new packet with the given payload length.
+    fn create_packet(payload_len: usize) -> Vec<u8> {
+        assert!(payload_len <= MAX_PAYLOAD_LEN);
 
-        let mut packet: Vec<u8> = Vec::with_capacity(packet_len as usize);
+        let packet_len = HEADER_LEN + payload_len;
+        let mut packet: Vec<u8> = Vec::with_capacity(packet_len);
         unsafe {
-            packet.set_len(packet_len as usize);
+            packet.set_len(packet_len);
         }
 
-        let header = packet_len.to_be_bytes().to_vec();
+        let header = (payload_len as u16).to_be_bytes().to_vec();
         packet[0] = header[0];
         packet[1] = header[1];
-        rand::thread_rng().fill_bytes(&mut packet[size_of::<u16>()..]);
 
+        rand::thread_rng().fill_bytes(&mut packet[HEADER_LEN..]);
         packet
     }
 
@@ -72,11 +92,17 @@ impl Source {
     }
 
     /// Returns the length of the contained data.
-    pub fn len(&self) -> usize {
+    pub fn data_len(&self) -> usize {
         self.data.len()
+    }
+
+    /// Returns the number of the contained packages.
+    pub fn num_packets(&self) -> usize {
+        self.num_packets
     }
 }
 
+/// A parser for pseudo protocol packages.
 pub struct Parser<'a> {
     reader: BufReader<&'a [u8]>,
 }
@@ -88,7 +114,8 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses the next package from the source, if available.
-    /// Returns the length of the package being parsed, or
+    ///
+    /// Returns the total length of the package being parsed, or
     /// a zero-length if at EOF.
     pub fn next(&mut self) -> Result<usize> {
         let buffer = self.reader.fill_buf()?;
@@ -96,13 +123,15 @@ impl<'a> Parser<'a> {
             return Ok(0);
         }
 
-        let mut header = [0; size_of::<u16>() as usize];
+        let mut header = [0; HEADER_LEN];
         header[0] = buffer[0];
         header[1] = buffer[1];
-        let packet_len = u16::from_be_bytes(header);
-        self.reader.consume(packet_len as usize);
 
-        Ok(packet_len as usize)
+        let payload_len = u16::from_be_bytes(header) as usize;
+        let packet_len = HEADER_LEN + payload_len;
+        self.reader.consume(packet_len);
+
+        Ok(packet_len)
     }
 
     /// Runs a parser and returns the total number of packets and bytes being read.

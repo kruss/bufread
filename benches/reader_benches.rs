@@ -23,15 +23,15 @@ use bench_config::bench_config;
 mod proto;
 
 use bufread::BufReader;
-use proto::{Parser, Source};
+use proto::{Parser, Source, MAX_PACKET_LEN};
 
 fn proto_benchmark(c: &mut Criterion) {
-    let num_packets = 50 * 1000;
-    let source = Source::fixed(num_packets);
+    let source_min_size = 100 * MAX_PACKET_LEN;
+    let buffer_max_size = 3 * MAX_PACKET_LEN;
+    let buffer_min_size = MAX_PACKET_LEN;
 
-    let min_size = u16::MAX as usize;
-    let max_size = 3 * min_size;
-    let reader = BufReader::new(max_size, min_size, source.data());
+    let source = Source::fixed(source_min_size);
+    let reader = BufReader::new(buffer_max_size, buffer_min_size, source.data());
     let mut parser = Parser::new(reader);
 
     c.bench_function("proto", |b| b.iter(|| Parser::run(black_box(&mut parser))));
