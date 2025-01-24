@@ -158,7 +158,14 @@ impl DeqBuffer {
         let before = self.start;
 
         self.start = min(self.start + size, self.slice.len());
-        self.start - before
+        let num = self.start - before;
+
+        if self.start == self.end {
+            self.start = 0;
+            self.end = 0;
+        }
+
+        num
     }
 
     /// Writes from the given input into this buffer
@@ -217,101 +224,106 @@ mod tests {
         let max_size = 1000;
         let chunk_size = 100;
 
+        let chunk1: [u8; 100] = [1; 100];
+        let chunk2: [u8; 100] = [2; 100];
+        let chunk3: [u8; 100] = [3; 100];
+        let mut temp: [u8; 100] = [0; 100];
+
         let mut buffer = DeqBuffer::new(max_size);
         assert_eq!(max_size, buffer.capacity());
         assert_eq!(max_size, buffer.write_available());
         assert_eq!(0, buffer.read_available());
 
         // write first chunk
-        let chunk: [u8; 100] = [1; 100];
-        assert_eq!(chunk_size, buffer.write_from(&chunk));
+        assert_eq!(chunk_size, buffer.write_from(&chunk1));
         assert_eq!(max_size - chunk_size, buffer.write_available());
         assert_eq!(chunk_size, buffer.read_available());
-
-        // read first chunk
-        let mut temp: [u8; 100] = [0; 100];
-        assert_eq!(chunk_size, buffer.read_to(&mut temp));
-        assert_eq!(chunk, temp);
-        assert_eq!(max_size - chunk_size, buffer.write_available());
-        assert_eq!(0, buffer.read_available());
 
         // write second chunk
-        let chunk: [u8; 100] = [2; 100];
-        assert_eq!(chunk_size, buffer.write_from(&chunk));
+        assert_eq!(chunk_size, buffer.write_from(&chunk2));
+        assert_eq!(max_size - chunk_size * 2, buffer.write_available());
+        assert_eq!(chunk_size * 2, buffer.read_available());
+
+        // read first chunk
+        assert_eq!(chunk_size, buffer.read_to(&mut temp));
+        assert_eq!(chunk1, temp);
         assert_eq!(max_size - chunk_size * 2, buffer.write_available());
         assert_eq!(chunk_size, buffer.read_available());
 
-        // read second chunk
-        let mut temp: [u8; 100] = [0; 100];
+        // read second chunk will reset buffer
         assert_eq!(chunk_size, buffer.read_to(&mut temp));
-        assert_eq!(chunk, temp);
-        assert_eq!(max_size - chunk_size * 2, buffer.write_available());
+        assert_eq!(chunk2, temp);
+        assert_eq!(max_size, buffer.write_available());
         assert_eq!(0, buffer.read_available());
+
+        // write first chunk
+        assert_eq!(chunk_size, buffer.write_from(&chunk1));
+        assert_eq!(max_size - chunk_size, buffer.write_available());
+        assert_eq!(chunk_size, buffer.read_available());
+
+        // write second chunk
+        assert_eq!(chunk_size, buffer.write_from(&chunk2));
+        assert_eq!(max_size - chunk_size * 2, buffer.write_available());
+        assert_eq!(chunk_size * 2, buffer.read_available());
+
+        // read first chunk
+        assert_eq!(chunk_size, buffer.read_to(&mut temp));
+        assert_eq!(chunk1, temp);
+        assert_eq!(max_size - chunk_size * 2, buffer.write_available());
+        assert_eq!(chunk_size, buffer.read_available());
 
         // write third chunk
-        let chunk: [u8; 100] = [3; 100];
-        assert_eq!(chunk_size, buffer.write_from(&chunk));
+        assert_eq!(chunk_size, buffer.write_from(&chunk3));
         assert_eq!(max_size - chunk_size * 3, buffer.write_available());
-        assert_eq!(chunk_size, buffer.read_available());
+        assert_eq!(chunk_size * 2, buffer.read_available());
 
         // flush with rest
-        assert_eq!(chunk_size * 2, buffer.flush());
-        assert_eq!(max_size - chunk_size, buffer.write_available());
+        assert_eq!(chunk_size, buffer.flush());
+        assert_eq!(max_size - chunk_size * 2, buffer.write_available());
+        assert_eq!(chunk_size * 2, buffer.read_available());
+
+        // read second chunk
+        assert_eq!(chunk_size, buffer.read_to(&mut temp));
+        assert_eq!(chunk2, temp);
+        assert_eq!(max_size - chunk_size * 2, buffer.write_available());
         assert_eq!(chunk_size, buffer.read_available());
 
-        // read third chunk
-        let mut temp: [u8; 100] = [0; 100];
-        assert_eq!(chunk_size, buffer.read_to(&mut temp));
-        assert_eq!(chunk, temp);
-        assert_eq!(max_size - chunk_size, buffer.write_available());
-        assert_eq!(0, buffer.read_available());
-
-        // flush all
-        assert_eq!(chunk_size, buffer.flush());
+        // clear buffer
+        assert_eq!(chunk_size, buffer.clear());
         assert_eq!(max_size, buffer.write_available());
         assert_eq!(0, buffer.read_available());
 
         // write all
         for i in 0..max_size {
-            buffer.write_slice()[i] = 255 as u8;
+            buffer.write_slice()[i] = (i % 255) as u8;
         }
         assert_eq!(max_size, buffer.write_done(max_size));
         assert_eq!(0, buffer.write_available());
         assert_eq!(max_size, buffer.read_available());
 
-        // read first chunk
-        for i in 0..chunk_size {
-            assert_eq!(255 as u8, buffer.read_slice()[i]);
-        }
-        assert_eq!(chunk_size, buffer.read_done(chunk_size));
+        // buffer is full
+        assert_eq!(0, buffer.write_done(1));
+
+        // read one
+        assert_eq!(1, buffer.read_done(1));
         assert_eq!(0, buffer.write_available());
-        assert_eq!(max_size - chunk_size, buffer.read_available());
+        assert_eq!(max_size - 1, buffer.read_available());
 
-        // flush with rest
-        assert_eq!(chunk_size, buffer.flush());
-        assert_eq!(chunk_size, buffer.write_available());
-        assert_eq!(max_size - chunk_size, buffer.read_available());
+        // flush rest
+        assert_eq!(1, buffer.flush());
+        assert_eq!(1, buffer.write_available());
+        assert_eq!(max_size - 1, buffer.read_available());
 
-        // read rest
-        for i in 0..(max_size - chunk_size) {
-            assert_eq!(255 as u8, buffer.read_slice()[i]);
+        // read rest will reset buffer
+        for i in 1..(max_size) {
+            assert_eq!((i % 255) as u8, buffer.read_slice()[i - 1]);
         }
-        assert_eq!(
-            max_size - chunk_size,
-            buffer.read_done(max_size - chunk_size)
-        );
-        assert_eq!(chunk_size, buffer.write_available());
+        assert_eq!(max_size - 1, buffer.read_done(max_size - 1));
+        assert_eq!(max_size, buffer.write_available());
         assert_eq!(0, buffer.read_available());
 
-        // write chunk and clear
-        let chunk: [u8; 100] = [1; 100];
-        assert_eq!(chunk_size, buffer.write_from(&chunk));
-        assert_eq!(chunk_size, buffer.clear());
-        assert_eq!(0, buffer.write_available());
-        assert_eq!(0, buffer.read_available());
-
-        // flush all
-        assert_eq!(max_size, buffer.flush());
+        // buffer is empty
+        assert_eq!(0, buffer.flush());
         assert_eq!(max_size, buffer.write_available());
         assert_eq!(0, buffer.read_available());
     }
